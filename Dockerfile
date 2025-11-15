@@ -11,7 +11,10 @@ RUN apk add --no-cache \
     font-noto-cjk \
     # 添加编译工具
     build-base \
-    python3-dev
+    python3-dev \
+    # ⬇️ 修复 pycairo 编译失败问题
+    cairo-dev \
+    pkgconfig
 
 WORKDIR /usr/src/app
 
