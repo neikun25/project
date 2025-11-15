@@ -1,11 +1,18 @@
 FROM node:18-alpine
 
-# 安装系统依赖
+# 安装系统依赖（包括编译工具）
 RUN apk add --no-cache \
     ffmpeg \
     libreoffice \
     python3 \
     py3-pip \
+    # 安装编译工具
+    build-base \
+    python3-dev \
+    # 安装其他必要的库
+    musl-dev \
+    libffi-dev \
+    openssl-dev \
     # 安装中文字体支持
     ttf-freefont \
     font-noto \
@@ -22,17 +29,19 @@ RUN npm install
 # 复制源代码
 COPY . .
 
-# 创建 Python 虚拟环境并安装依赖
+# 创建 Python 虚拟环境并安装依赖（使用预编译的 wheel）
 RUN python3 -m venv /app/venv \
+    && /app/venv/bin/pip install --upgrade pip \
     && /app/venv/bin/pip install --no-cache-dir \
-        pdf2docx \
-        pdfplumber \
-        python-docx \
-        openpyxl \
-        pandas \
-        python-pptx \
-        beautifulsoup4 \
-        pdfkit
+    pdfplumber \
+    python-docx \
+    openpyxl \
+    pandas \
+    python-pptx \
+    beautifulsoup4 \
+    pdfkit \
+    # 单独安装 PyMuPDF（pdf2docx 的依赖）
+    && /app/venv/bin/pip install --no-cache-dir PyMuPDF
 
 # 复制 entrypoint 脚本并设置权限
 COPY entrypoint.sh /entrypoint.sh
