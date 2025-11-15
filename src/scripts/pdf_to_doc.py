@@ -5,7 +5,6 @@ import os
 import traceback
 from pdfminer.high_level import extract_text
 from docx import Document
-import tempfile
 
 def pdf_to_doc_pdfminer(pdf_path, doc_path):
     """使用 pdfminer 提取文本并转换为 Word 文档"""
@@ -27,7 +26,7 @@ def pdf_to_doc_pdfminer(pdf_path, doc_path):
         # 创建 Word 文档
         doc = Document()
         
-        # 按段落分割文本
+        # 按段落分割文本并添加到文档
         paragraphs = text.split('\n\n')
         total_paragraphs = 0
         
@@ -105,55 +104,6 @@ def pdf_to_doc_pdfplumber(pdf_path, doc_path):
         print(f"[ERROR] pdfplumber 转换失败: {str(e)}")
         return False
 
-def pdf_to_doc_fitz(pdf_path, doc_path):
-    """使用 PyMuPDF (fitz) 提取文本"""
-    try:
-        import fitz  # PyMuPDF
-        
-        print(f"[INFO] 使用 PyMuPDF 转换: {pdf_path} -> {doc_path}")
-        
-        doc = Document()
-        total_pages = 0
-        total_paragraphs = 0
-        
-        # 打开 PDF 文件
-        pdf_document = fitz.open(pdf_path)
-        total_pages = len(pdf_document)
-        
-        for page_num in range(total_pages):
-            print(f"[INFO] 处理第 {page_num + 1}/{total_pages} 页")
-            
-            # 获取页面
-            page = pdf_document[page_num]
-            
-            # 提取文本
-            text = page.get_text()
-            
-            if text and text.strip():
-                paragraphs = text.split('\n\n')
-                for para in paragraphs:
-                    para = para.strip()
-                    if para:
-                        doc.add_paragraph(para)
-                        total_paragraphs += 1
-            else:
-                doc.add_paragraph(f"第 {page_num + 1} 页 - 无文本内容")
-                total_paragraphs += 1
-        
-        pdf_document.close()
-        
-        if total_paragraphs == 0:
-            doc.add_paragraph("未能从 PDF 中提取到文本内容")
-        
-        doc.save(doc_path)
-        print(f"[SUCCESS] PyMuPDF 转换成功: {pdf_path} -> {doc_path}")
-        print(f"[INFO] 处理了 {total_pages} 页，提取了 {total_paragraphs} 个段落")
-        return True
-        
-    except Exception as e:
-        print(f"[ERROR] PyMuPDF 转换失败: {str(e)}")
-        return False
-
 def main():
     parser = argparse.ArgumentParser(description='PDF 转 Word 文档')
     parser.add_argument('-i', '--input', required=True, help='输入 PDF 文件路径')
@@ -185,11 +135,6 @@ def main():
         print("[INFO] 尝试方法2: pdfplumber")
         success = pdf_to_doc_pdfplumber(args.input, args.output)
     
-    # 方法3: 使用 PyMuPDF
-    if not success:
-        print("[INFO] 尝试方法3: PyMuPDF")
-        success = pdf_to_doc_fitz(args.input, args.output)
-    
     if success:
         # 验证输出文件
         if os.path.exists(args.output) and os.path.getsize(args.output) > 0:
@@ -201,7 +146,7 @@ def main():
     else:
         print("[ERROR] 所有转换方法都失败了")
         print("[INFO] 请检查是否安装了必要的依赖:")
-        print("  pip install pdfminer.six python-docx pdfplumber PyMuPDF")
+        print("  pip install pdfminer.six python-docx pdfplumber")
         sys.exit(1)
 
 if __name__ == "__main__":

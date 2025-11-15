@@ -1,6 +1,6 @@
 FROM node:lts-alpine
 
-# 安装系统依赖
+# 安装系统依赖（包括编译工具）
 RUN apk add --no-cache \
     ffmpeg \
     libreoffice \
@@ -8,7 +8,10 @@ RUN apk add --no-cache \
     py3-pip \
     ttf-freefont \
     font-noto \
-    font-noto-cjk
+    font-noto-cjk \
+    # 添加编译工具
+    build-base \
+    python3-dev
 
 WORKDIR /usr/src/app
 
