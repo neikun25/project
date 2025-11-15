@@ -8,7 +8,7 @@ export const config = {
   allowedAudioExt: [".mp3", ".wav", ".aac", ".flac", ".m4a", ".ogg", ".wma"],
   ffmpegPath: process.env.FFMPEG_PATH || "ffmpeg",
   sofficePath: process.env.SOFFICE_PATH || "soffice",
-  pythonPath: process.env.PYTHON_PATH || "python",
+  pythonPath: process.env.PYTHON_PATH || "/app/venv/bin/python3",
   // 转换质量设置
   audioQuality: {
     mp3: "-b:a 192k -ac 2",

@@ -19,8 +19,10 @@ RUN npm install
 # 复制源代码
 COPY . .
 
-# 安装 Python 依赖
-RUN pip3 install -r requirements.txt
+# 创建 Python 虚拟环境并安装依赖
+RUN python3 -m venv /app/venv && \
+    /app/venv/bin/pip install --upgrade pip && \
+    /app/venv/bin/pip install -r requirements.txt
 
 # 构建 TypeScript
 RUN npm run build
@@ -35,5 +37,8 @@ COPY *.py ./src/scripts/
 RUN chmod +x ./src/scripts/*.py
 
 EXPOSE 8080
+
+# 设置 Python 路径环境变量
+ENV PYTHON_PATH=/app/venv/bin/python3
 
 CMD ["node", "dist/index.js"]
