@@ -6,8 +6,14 @@ set -e
 echo "=== 文件转换服务启动脚本 ==="
 echo "当前时间: $(date)"
 echo "工作目录: $(pwd)"
-echo "Node.js 版本: $(node --version)"
-echo "NPM 版本: $(npm --version)"
+
+# 激活 Python 虚拟环境
+if [ -f "/app/venv/bin/activate" ]; then
+    source /app/venv/bin/activate
+    echo "✓ Python 虚拟环境已激活"
+else
+    echo "⚠ Python 虚拟环境未找到"
+fi
 
 # 设置默认环境变量
 export PORT=${PORT:-8080}
@@ -20,7 +26,9 @@ export PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-"http://localhost:8080"}
 # 转换工具路径设置
 export FFMPEG_PATH=${FFMPEG_PATH:-"ffmpeg"}
 export SOFFICE_PATH=${SOFFICE_PATH:-"soffice"}
-export PYTHON_PATH=${PYTHON_PATH:-"python3"}
+export PYTHON_PATH=${PYTHON_PATH:-"/app/venv/bin/python3"}  # 使用虚拟环境中的 Python
+
+# ... 其余部分保持不变 ...
 
 # 创建必要的目录
 echo "创建必要的目录..."

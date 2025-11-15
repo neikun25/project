@@ -10,18 +10,8 @@ RUN apk add --no-cache \
     ttf-freefont \
     font-noto \
     font-noto-cjk \
-    # 安装 Python 依赖
-    && pip3 install --no-cache-dir \
-        pdf2docx \
-        pdfplumber \
-        python-docx \
-        openpyxl \
-        pandas \
-        python-pptx \
-        beautifulsoup4 \
-        pdfkit \
     # 清理缓存
-    && rm -rf /var/cache/apk/* /tmp/* /root/.cache
+    && rm -rf /var/cache/apk/* /tmp/*
 
 WORKDIR /app
 
@@ -31,6 +21,18 @@ RUN npm install
 
 # 复制源代码
 COPY . .
+
+# 创建 Python 虚拟环境并安装依赖
+RUN python3 -m venv /app/venv \
+    && /app/venv/bin/pip install --no-cache-dir \
+        pdf2docx \
+        pdfplumber \
+        python-docx \
+        openpyxl \
+        pandas \
+        python-pptx \
+        beautifulsoup4 \
+        pdfkit
 
 # 复制 entrypoint 脚本并设置权限
 COPY entrypoint.sh /entrypoint.sh
