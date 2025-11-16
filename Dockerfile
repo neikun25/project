@@ -22,18 +22,24 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # 安装 LibreOffice（headless 版本，无 GUI）
 RUN apt-get update && apt-get install -y \
+    build-essential \
+    libcairo2-dev \
+    libffi-dev \
+    pkg-config \
+    python3 \
+    python3-venv \
+    python3-pip \
+    ffmpeg \
     libreoffice-core \
     libreoffice-writer \
     libreoffice-calc \
     libreoffice-impress \
     libreoffice-common \
     libreoffice-java-common \
-    python3 \
-    python3-venv \
-    python3-pip \
     fonts-noto-cjk \
-    ffmpeg \
-    && apt-get clean && rm -rf /var/lib/apt/lists/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 
 
 WORKDIR /app
