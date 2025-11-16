@@ -54,6 +54,7 @@ RUN npm install --omit=dev
 ################ Copy Scripts ################
 COPY src/scripts ./src/scripts
 COPY uploads ./uploads
+COPY public ./public
 
 ENV PYTHON_PATH=/app/venv/bin/python3
 
