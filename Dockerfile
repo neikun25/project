@@ -13,9 +13,9 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /usr/src/app
 
-# 安装 Node 依赖
+# 安装 Node 依赖（必须包含 devDependencies）
 COPY package*.json ./
-RUN npm install --production
+RUN npm install
 
 # 复制代码
 COPY . .
