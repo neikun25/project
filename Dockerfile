@@ -1,50 +1,35 @@
-FROM node:lts-alpine
+FROM node:18-bullseye
 
-# 安装系统依赖（包括编译工具）
-RUN apk add --no-cache \
-    ffmpeg \
+# 安装 LibreOffice + Python + 字体
+RUN apt-get update && apt-get install -y \
     libreoffice \
     python3 \
-    py3-pip \
-    ttf-freefont \
-    font-noto \
-    font-noto-cjk \
-    # 添加编译工具
-    build-base \
-    python3-dev \
-    # ⬇️ 修复 pycairo 编译失败问题
-    cairo-dev \
-    pkgconfig
+    python3-venv \
+    python3-pip \
+    ffmpeg \
+    fonts-noto-cjk \
+    fonts-freefont-ttf \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app
 
-# 复制 package.json 并安装依赖
+# 安装 Node 依赖
 COPY package*.json ./
-RUN npm install
+RUN npm install --production
 
-# 复制源代码
+# 复制代码
 COPY . .
 
-# 创建 Python 虚拟环境并安装依赖
+# Python 虚拟环境
 RUN python3 -m venv /app/venv && \
     /app/venv/bin/pip install --upgrade pip && \
     /app/venv/bin/pip install -r requirements.txt
 
-# 构建 TypeScript
+# 构建 TS
 RUN npm run build
-
-# 创建必要的目录
-RUN mkdir -p uploads public src/scripts
-
-# 复制 Python 脚本到正确位置
-COPY *.py ./src/scripts/
-
-# 设置 Python 脚本权限
-RUN chmod +x ./src/scripts/*.py
 
 EXPOSE 8080
 
-# 设置 Python 路径环境变量
 ENV PYTHON_PATH=/app/venv/bin/python3
 
 CMD ["node", "dist/index.js"]
