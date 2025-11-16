@@ -55,6 +55,7 @@ WORKDIR /app
 # 只安装运行时依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
+    ca-certificates \
     libcairo2 \
     libffi8 \
     libglib2.0-0 \

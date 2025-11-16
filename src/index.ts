@@ -24,7 +24,7 @@ import {
   findActualOutputFile,
   checkPythonEnvironment,
   checkPythonDependencies
-} from "./utils";
+} from "./utils.js";
 import pLimit from "p-limit";
 
 const app = express();
