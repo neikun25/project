@@ -8,7 +8,7 @@ import cors from "cors";
 import { RateLimiterMemory, IRateLimiterRes } from "rate-limiter-flexible";
 import multer from "multer";
 import { nanoid } from "nanoid";
-import { config } from "./config";
+import { config } from "./config.js";
 import { Category, ConvertTask } from "./types";
 import { 
   ensureDirSync, 

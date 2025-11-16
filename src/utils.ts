@@ -2,7 +2,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { exec as execCb } from "node:child_process";
 import { promisify } from "node:util";
-import { config } from "./config";
+import { config } from "./config.js";
 import { Category } from "./types";
 
 const exec = promisify(execCb);
