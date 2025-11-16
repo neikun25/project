@@ -1,13 +1,24 @@
 ##############################################
-# Stage 1: Build Node
+# Stage 1: Build Node Application
 ##############################################
 FROM node:18-alpine as node-builder
 
 WORKDIR /app
+
+# 复制 package 文件
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+
+# 安装所有依赖(包括 devDependencies,用于构建)
+RUN npm ci && npm cache clean --force
+
+# 复制源代码
 COPY . .
+
+# 构建 TypeScript 项目
 RUN npm run build
+
+# 删除 devDependencies,只保留生产依赖
+RUN npm prune --production
 
 
 ##############################################
@@ -17,6 +28,7 @@ FROM python:3.11-slim as python-builder
 
 WORKDIR /app
 
+# 安装编译工具
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
@@ -25,6 +37,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
+# 安装 Python 依赖
 COPY requirements.txt .
 RUN python3 -m venv /opt/venv && \
     . /opt/venv/bin/activate && \
@@ -33,7 +46,7 @@ RUN python3 -m venv /opt/venv && \
 
 
 ##############################################
-# Stage 3: Runtime (最小化)
+# Stage 3: Runtime Image (最小化)
 ##############################################
 FROM debian:bookworm-slim
 
@@ -61,9 +74,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice-impress-nogui \
     # 最小字体集
     fonts-liberation \
-    # 如需中文支持,取消下行注释
-    # fonts-wqy-microhei \
-    # FFmpeg (如不需要视频处理,可删除此行)
+    # FFmpeg (如不需要可删除)
     ffmpeg \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
@@ -74,18 +85,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /usr/share/locale/* \
     && apt-get purge -y --auto-remove curl
 
-# 复制 Node 应用
+# 从 node-builder 复制构建产物和生产依赖
 COPY --from=node-builder /app/dist ./dist
 COPY --from=node-builder /app/node_modules ./node_modules
-COPY --from=node-builder /app/package.json ./
+COPY --from=node-builder /app/package*.json ./
 
-# 复制 Python 虚拟环境
+# 从 python-builder 复制 Python 虚拟环境
 COPY --from=python-builder /opt/venv /opt/venv
 
 # 复制脚本
 COPY src/scripts ./src/scripts
 
-# 创建目录
+# 创建必要目录
 RUN mkdir -p uploads public && \
     chmod 755 uploads public
 
