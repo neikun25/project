@@ -14,9 +14,9 @@ RUN npm run build
 
 
 ##############################################
-# Stage 2: Runtime Environment (Debian slim)
+# Stage 2: Runtime Environment (use Node slim so npm is available)
 ##############################################
-FROM ubuntu:22.04
+FROM node:18-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
