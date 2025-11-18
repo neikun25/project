@@ -10,6 +10,7 @@ import multer from "multer";
 import { nanoid } from "nanoid";
 import { config } from "./config.js";
 import { Category, ConvertTask } from "./types";
+import { cloud } from 'wx-server-sdk';
 import { 
   ensureDirSync, 
   detectExtByName, 
@@ -62,6 +63,10 @@ app.use(async (req: express.Request, res: express.Response, next: express.NextFu
       retryAfter: Math.ceil((errorResponse?.msBeforeNext || 1000) / 1000)
     });
   }
+});
+
+cloud.init({
+  env: process.env.ENV_ID || 'prod-2gyfay7ve535c92a'
 });
 
 // 准备目录
@@ -170,60 +175,121 @@ app.post("/detect-targets", upload.single("file"), (req: express.Request, res: e
   }
 });
 
-// 文件上传和转换接口 - 添加格式验证
+// 文件上传和转换接口 - 支持云存储和传统上传
 app.post("/convert/upload", upload.single("file"), async (req: express.Request, res: express.Response) => {
   try {
     const category = String(req.body.category || "") as Category;
     let target = String(req.body.target || "").toLowerCase();
-    const sourceFormatFromFrontend = String(req.body.source || "").toLowerCase(); // 前端传递的源格式
+    const sourceFormatFromFrontend = String(req.body.source || "").toLowerCase();
+    const fileId = String(req.body.fileId || ""); // 云存储文件ID
     
     // 修复：移除目标格式中的点（如果存在）
     if (target.startsWith('.')) {
       target = target.substring(1);
     }
     
-    if (!req.file) return res.status(400).json({ message: "缺少文件" });
-    if (!category || !target) return res.status(400).json({ message: "缺少必要字段" });
+    // 检查必要参数
+    if (!category || !target) {
+      return res.status(400).json({ message: "缺少必要字段: category 或 target" });
+    }
 
-    const inputPath = req.file.path;
-    const actualFileExt = detectExtByName(req.file.originalname);
-    const actualSourceFormat = actualFileExt.replace(".", "");
-    
-    // 验证前端选择的格式与实际文件格式是否匹配
-    if (sourceFormatFromFrontend && sourceFormatFromFrontend !== actualSourceFormat) {
-      if (fs.existsSync(inputPath)) {
-        fs.unlinkSync(inputPath);
-        console.log(`已清理格式不匹配的文件: ${inputPath}`);
+    let inputPath: string;
+    let originalFileName: string;
+    let actualSourceFormat: string;
+
+    // 方式一：通过云存储文件ID处理（小程序云调用）
+    if (fileId) {
+      try {
+        console.log('通过云存储文件ID处理:', fileId);
+        
+        // 从云存储下载文件
+        const downloadResult = await cloud.downloadFile({
+          fileID: fileId
+        });
+        
+        if (!downloadResult.fileContent) {
+          return res.status(400).json({
+            code: 'FILE_DOWNLOAD_FAILED',
+            message: '从云存储下载文件失败'
+          });
+        }
+
+        // 生成临时文件路径
+        const tempId = nanoid();
+        const cloudPath = String(req.body.cloudPath || `file_${Date.now()}`);
+        const fileExt = path.extname(cloudPath) || '.tmp';
+        inputPath = path.join(uploadDir, `${tempId}${fileExt}`);
+        
+        // 保存文件到临时目录
+        fs.writeFileSync(inputPath, downloadResult.fileContent);
+        
+        originalFileName = path.basename(cloudPath, fileExt);
+        actualSourceFormat = fileExt.replace(".", "") || sourceFormatFromFrontend;
+        
+        console.log('云存储文件下载成功:', {
+          fileId,
+          inputPath,
+          originalFileName,
+          fileSize: downloadResult.fileContent.length
+        });
+        
+      } catch (cloudError) {
+        console.error('云存储下载错误:', cloudError);
+        return res.status(400).json({
+          code: 'CLOUD_DOWNLOAD_ERROR',
+          message: `云存储文件下载失败: ${cloudError.message}`
+        });
       }
-      return res.status(400).json({ 
-        message: `文件格式不匹配：选择的是 ${sourceFormatFromFrontend.toUpperCase()} 格式，但上传的是 ${actualSourceFormat.toUpperCase()} 文件` 
+    } 
+    // 方式二：传统的multipart上传（保持向后兼容）
+    else if (req.file) {
+      if (!req.file) return res.status(400).json({ message: "缺少文件" });
+      
+      inputPath = req.file.path;
+      const actualFileExt = detectExtByName(req.file.originalname);
+      actualSourceFormat = actualFileExt.replace(".", "");
+      originalFileName = (req as any).originalFileName || path.parse(req.file.originalname).name;
+      
+      console.log('传统文件上传:', {
+        originalName: req.file.originalname,
+        inputPath,
+        fileSize: req.file.size
+      });
+      
+      // 验证前端选择的格式与实际文件格式是否匹配
+      if (sourceFormatFromFrontend && sourceFormatFromFrontend !== actualSourceFormat) {
+        if (fs.existsSync(inputPath)) {
+          fs.unlinkSync(inputPath);
+          console.log(`已清理格式不匹配的文件: ${inputPath}`);
+        }
+        return res.status(400).json({ 
+          message: `文件格式不匹配：选择的是 ${sourceFormatFromFrontend.toUpperCase()} 格式，但上传的是 ${actualSourceFormat.toUpperCase()} 文件` 
+        });
+      }
+    } else {
+      return res.status(400).json({
+        code: 'NO_FILE_PROVIDED',
+        message: '请提供文件ID或直接上传文件'
       });
     }
-    
+
     // 获取原始文件名
-    let originalFileName = (req as any).originalFileName;
     if (!originalFileName) {
-      originalFileName = path.parse(req.file.originalname).name;
+      originalFileName = `file_${Date.now()}`;
     }
     
-    console.log(`原始文件名解析: 上传文件名="${req.file.originalname}", 提取的原始文件名="${originalFileName}"`);
-    console.log(`转换验证: 源扩展名=${actualFileExt}, 目标格式=${target}, 前端选择的源格式=${sourceFormatFromFrontend}`);
-
-    // 记录请求来源
-    const userAgent = req.headers['user-agent'] || 'unknown';
-    const isMobile = /Mobile|Android|iPhone|iPad/.test(userAgent);
-    console.log(`收到转换请求: ${req.file.originalname}, 来源: ${isMobile ? '移动端' : '电脑端'}`);
+    console.log(`转换验证: 源格式=${actualSourceFormat}, 目标格式=${target}, 文件名="${originalFileName}"`);
 
     // 验证转换是否支持
-    if (!isConversionSupported(category, actualFileExt, target)) {
+    if (!isConversionSupported(category, `.${actualSourceFormat}`, target)) {
       // 删除已上传的文件
       if (fs.existsSync(inputPath)) {
         fs.unlinkSync(inputPath);
         console.log(`已清理不支持转换的文件: ${inputPath}`);
       }
-      const supportedTargets = getSupportedTargets(category, actualFileExt);
+      const supportedTargets = getSupportedTargets(category, `.${actualSourceFormat}`);
       return res.status(400).json({ 
-        message: `不支持从 ${actualFileExt} 转换为 ${target}`,
+        message: `不支持从 ${actualSourceFormat} 转换为 ${target}`,
         supportedTargets 
       });
     }
@@ -242,7 +308,7 @@ app.post("/convert/upload", upload.single("file"), async (req: express.Request, 
     };
     tasks.set(id, task);
 
-    console.log(`任务创建: ${id}, 文件: ${req.file.originalname}, 实际格式: ${actualSourceFormat}, 目标格式: ${target}`);
+    console.log(`任务创建: ${id}, 文件: ${originalFileName}, 实际格式: ${actualSourceFormat}, 目标格式: ${target}`);
 
     // 异步执行转换（并发限制）
     convertLimiter(() => convertAsync(task)).catch((err: Error) => {
