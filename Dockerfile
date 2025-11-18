@@ -54,7 +54,8 @@ WORKDIR /app
 
 # 只安装运行时依赖
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 \
+    python3 python3-venv \
+    ca-certificates \
     libcairo2 \
     libffi8 \
     libglib2.0-0 \
@@ -71,7 +72,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=node-builder /app/dist ./dist
 COPY --from=node-builder /app/node_modules ./node_modules
 COPY --from=node-builder /app/package*.json ./
-COPY --from=python-builder /opt/venv /opt/venv
+
+# 在最终镜像中创建新的 venv，并从构建器中复制已安装的包
+RUN python3 -m venv /opt/venv
+COPY --from=python-builder /opt/venv/lib/python3.11/site-packages /opt/venv/lib/python3.11/site-packages
 
 # 复制脚本
 COPY src/scripts ./src/scripts
