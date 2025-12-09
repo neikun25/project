@@ -1,92 +1,111 @@
+# syntax=docker/dockerfile:1.4
 ##############################################
-# Stage 1: Build Node Application
+# ConvertEasy Backend - Python FastAPI 版本
+# 支持文档转换（PDF/Word/Excel/PPT）和音频转换
+# 
+# 构建命令（启用 BuildKit 缓存加速）：
+#   DOCKER_BUILDKIT=1 docker build -t converteasy .
 ##############################################
-FROM node:18-alpine as node-builder
 
-WORKDIR /app
-
-# 复制 package 文件
-COPY package*.json ./
-COPY tsconfig.json ./
-
-# 安装所有依赖
-RUN npm ci && npm cache clean --force
-
-# 复制源代码 (确保包含所有文件)
-COPY src ./src
-
-# 构建 TypeScript 项目
-RUN npm run build
-
-# 验证构建结果
-RUN ls -la dist/
-
-# 清理 devDependencies
-RUN npm prune --production
-
+ARG PYTHON_VERSION=3.11
 
 ##############################################
-# Stage 2: Build Python Dependencies
+# Stage 1: 系统依赖基础镜像（可缓存复用）
 ##############################################
-FROM python:3.11-slim as python-builder
+FROM python:${PYTHON_VERSION}-slim AS base
 
-WORKDIR /app
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ libcairo2-dev libffi-dev pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY requirements.txt .
-RUN python3 -m venv /opt/venv && \
-    /opt/venv/bin/pip install --no-cache-dir -U pip && \
-    /opt/venv/bin/pip install --no-cache-dir -r requirements.txt
-
-
-##############################################
-# Stage 3: Runtime
-##############################################
-FROM node:18-slim
-
-ENV PYTHON_PATH=/opt/venv/bin/python3 \
-    NODE_ENV=production
-
-WORKDIR /app
-
-# 只安装运行时依赖
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-venv \
+# 使用 BuildKit 缓存 apt 下载
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    # 基础依赖
     ca-certificates \
+    curl \
+    # Python C 扩展运行时库
     libcairo2 \
     libffi8 \
     libglib2.0-0 \
+    # LibreOffice 无头模式（文档转换）- 只安装必需组件
     libreoffice-core-nogui \
     libreoffice-writer-nogui \
     libreoffice-calc-nogui \
     libreoffice-impress-nogui \
+    # 字体支持（使用更小的字体包）
     fonts-liberation \
-    ffmpeg \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    fonts-wqy-microhei \
+    # 音频转换
+    ffmpeg
 
-# 复制构建产物
-COPY --from=node-builder /app/dist ./dist
-COPY --from=node-builder /app/node_modules ./node_modules
-COPY --from=node-builder /app/package*.json ./
+##############################################
+# Stage 2: Python 依赖构建
+##############################################
+FROM python:${PYTHON_VERSION}-slim AS builder
 
-# 在最终镜像中创建新的 venv，并从构建器中复制已安装的包
+WORKDIR /app
+
+# 安装构建依赖（使用缓存）
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ libcairo2-dev libffi-dev pkg-config
+
+# 创建虚拟环境
 RUN python3 -m venv /opt/venv
-COPY --from=python-builder /opt/venv/lib/python3.11/site-packages /opt/venv/lib/python3.11/site-packages
+ENV PATH="/opt/venv/bin:$PATH"
 
-# 复制脚本
-COPY src/scripts ./src/scripts
+# 使用 BuildKit 缓存 pip 下载
+COPY requirements.txt .
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install -U pip wheel \
+    && pip install -r requirements.txt
 
-# 创建目录
-RUN mkdir -p uploads public
+# 清理 Python 缓存文件
+RUN find /opt/venv -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true \
+    && find /opt/venv -type f -name "*.pyc" -delete 2>/dev/null || true
+
+##############################################
+# Stage 3: 运行时镜像
+##############################################
+FROM base AS runtime
+
+# 镜像元数据
+LABEL maintainer="ConvertEasy Team" \
+      version="2.0.0" \
+      description="File conversion service with FastAPI"
+
+# 环境变量
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/opt/venv/bin:$PATH" \
+    PORT=8080 \
+    HOST=0.0.0.0
+
+WORKDIR /app
+
+# 创建应用目录
+RUN mkdir -p /app/uploads /app/public \
+    && chmod 755 /app/uploads /app/public
+
+# 复制虚拟环境
+COPY --from=builder /opt/venv /opt/venv
+
+# 复制应用代码（放在最后，变化最频繁）
+COPY app ./app
+
+# 复制证书配置（K8s lifecycle hook）
+COPY cert /app/cert
+RUN set -e; \
+    [ -f /app/cert/initenv.sh ] && chmod +x /app/cert/initenv.sh || true; \
+    if [ -f /app/cert/certificate.crt ]; then \
+        cp /app/cert/certificate.crt /usr/local/share/ca-certificates/ 2>/dev/null || true; \
+        update-ca-certificates 2>/dev/null || true; \
+    fi
 
 # 健康检查
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s \
-    CMD node -e "require('http').get('http://localhost:8080/health',(r)=>{process.exit(r.statusCode===200?0:1)})"
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -fsS http://localhost:8080/health || exit 1
 
 EXPOSE 8080
 
-CMD ["node", "dist/index.js"]
+# 启动命令
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
